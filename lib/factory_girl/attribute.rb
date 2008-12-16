@@ -2,7 +2,7 @@ class Factory
 
   class AttributeDefinitionError < RuntimeError
   end
-  
+
   class Attribute #:nodoc:
 
     attr_reader :name
@@ -11,9 +11,9 @@ class Factory
       name = name.to_sym
 
       if name.to_s =~ /=$/
-        raise AttributeDefinitionError, 
+        raise AttributeDefinitionError,
           "factory_girl uses 'f.#{name.to_s.chop} value' syntax " +
-          "rather than 'f.#{name} = value'" 
+          "rather than 'f.#{name} = value'"
       end
 
       unless static_value.nil? || lazy_block.nil?

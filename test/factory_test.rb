@@ -46,13 +46,13 @@ class FactoryTest < Test::Unit::TestCase
 
     should "add the factory to the list of factories" do
       Factory.define(@name) {|f| }
-      assert_equal Factory.factories[@name], 
+      assert_equal Factory.factories[@name],
                    @factory,
                    "Factories: #{Factory.factories.inspect}"
     end
 
   end
-  
+
   context "a factory" do
 
     setup do
@@ -85,6 +85,31 @@ class FactoryTest < Test::Unit::TestCase
 
       should "include that value in the generated attributes hash" do
         assert_equal @value, @factory.attributes_for[@attr]
+      end
+
+    end
+
+    should "not allow the same scope to be added twice" do
+      assert_raise(Factory::ScopeDefinitionError) do
+        2.times { @factory.add_scope @name, { :a => "a" } }
+      end
+    end
+
+    context "when adding an scope with a value parameter" do
+
+      setup do
+        @scope = :scope
+        @attr  = :name
+        @value = 'Elvis lives!'
+        @factory.add_scope(@scope, @attr => @value)
+      end
+
+      should "include that value in the generated scopes hash" do
+        assert_equal @value, @factory.scope_attributes_for(@scope)[@attr]
+      end
+
+      should "include a scope in the generated scope names" do
+        assert @factory.scope_names.include?(@scope)
       end
 
     end
@@ -131,7 +156,7 @@ class FactoryTest < Test::Unit::TestCase
       end
 
       context "when other attributes have previously been defined" do
-        
+
         setup do
           @attr  = :unimportant
           @attrs = {
@@ -322,7 +347,7 @@ class FactoryTest < Test::Unit::TestCase
         end
 
       end
-      
+
       context "when creating an instance" do
 
         setup do
@@ -346,15 +371,15 @@ class FactoryTest < Test::Unit::TestCase
     end
 
   end
-  
+
   context "a factory with a name ending in s" do
-    
+
     setup do
       @name    = :business
       @class   = Business
       @factory = Factory.new(@name)
     end
-    
+
     should "have a factory name" do
       assert_equal @name, @factory.factory_name
     end
@@ -362,7 +387,7 @@ class FactoryTest < Test::Unit::TestCase
     should "have a build class" do
       assert_equal @class, @factory.build_class
     end
-    
+
   end
 
   context "a factory with a string for a name" do
@@ -434,7 +459,53 @@ class FactoryTest < Test::Unit::TestCase
     end
 
   end
-  
+
+  context "Create the factory with scopes" do
+    setup do
+      @name = :station
+      Factory.define(@name) do |s|
+        s.status    0
+        s.rotations 0
+        s.broadcast :tv
+        s.add_scope(:radio, :broadcast => :radio)
+        s.add_scope(:approved, :status => 1, :rotations => 1)
+      end
+      @factory = Factory.factories[@name]
+    end
+
+    should "delegate the scope_attributes_for method to the factory instance" do
+      attrs = {:a => "a" }
+      @factory.expects(:scope_attributes_for).with(:radio, attrs)
+      Factory.send(:scope_attributes_for, @name, :radio, attrs)
+    end
+
+    should "return scope attributes" do
+      Factory.send(:scope_attributes_for, @name, {})
+    end
+
+    should "raised a NoMethodError when called with a nonexistant factory" do
+      assert_raise(NoMethodError) { Factory.approved(:bogus) }
+    end
+
+    should "assign :approved scope" do
+      factory =  Factory.approved(@name)
+      assert_equal 1, factory.status
+      assert_equal 1, factory.rotations
+    end
+
+    should "assign :radio scope" do
+      factory =  Factory.radio(@name)
+      assert_equal :radio, factory.broadcast
+    end
+
+    should "assign :approved and :radio scope" do
+      factory =  Factory.approved_radio(@name)
+      assert_equal :radio, factory.broadcast
+      assert_equal 1, factory.status
+      assert_equal 1, factory.rotations
+    end
+  end
+
   def self.context_in_directory_with_files(*files)
     context "in a directory with #{files.to_sentence}" do
       setup do
@@ -442,14 +513,14 @@ class FactoryTest < Test::Unit::TestCase
         @tmp_dir = File.join(File.dirname(__FILE__), 'tmp')
         FileUtils.mkdir_p @tmp_dir
         Dir.chdir(@tmp_dir)
-        
+
         files.each do |file|
           FileUtils.mkdir_p File.dirname(file)
           FileUtils.touch file
           Factory.stubs(:require).with(file)
         end
       end
-      
+
       teardown do
         Dir.chdir(@pwd)
         FileUtils.rm_rf(@tmp_dir)
@@ -458,18 +529,18 @@ class FactoryTest < Test::Unit::TestCase
       yield
     end
   end
-  
+
   def self.should_require_definitions_from(file)
     should "load definitions from #{file}" do
       Factory.expects(:require).with(file)
       Factory.find_definitions
-    end    
+    end
   end
-  
+
   context_in_directory_with_files 'factories.rb' do
     should_require_definitions_from 'factories.rb'
   end
-  
+
   %w(spec test).each do |dir|
     context_in_directory_with_files File.join(dir, 'factories.rb') do
       should_require_definitions_from "#{dir}/factories.rb"

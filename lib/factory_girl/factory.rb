@@ -1,5 +1,11 @@
 class Factory
-  
+
+  class ScopeDefinitionError < RuntimeError
+  end
+
+  class ScopeNotFoundError < RuntimeError
+  end
+
   class << self
     attr_accessor :factories #:nodoc:
 
@@ -23,7 +29,7 @@ class Factory
   #     A unique name used to identify this factory.
   #   options: (Hash)
   #     class: the class that will be used when generating instances for this
-  #            factory. If not specified, the class will be guessed from the 
+  #            factory. If not specified, the class will be guessed from the
   #            factory name.
   #
   # Yields:
@@ -43,6 +49,7 @@ class Factory
     @factory_name = factory_name_for(name)
     @options      = options
     @attributes   = []
+    @scopes       = {}
   end
 
   # Adds an attribute that should be assigned on generated instances for this
@@ -73,6 +80,19 @@ class Factory
     @attributes << attribute
   end
 
+  def add_scope(name, attr = {})
+    if @scopes.has_key?(name.to_sym)
+      raise ScopeDefinitionError, "Scope already defined: #{name}"
+    end
+
+    attrs = []
+    attr.each_pair do |k,v|
+      attrs << Attribute.new(k, v, nil)
+    end
+
+    @scopes[name.to_sym] = attrs
+  end
+
   # Calls add_attribute using the missing method name as the name of the
   # attribute, so that:
   #
@@ -86,9 +106,34 @@ class Factory
   #     f.add_attribute :name, 'Billy Idol'
   #   end
   #
-  # are equivilent. 
+  # are equivilent.
   def method_missing (name, *args, &block)
     add_attribute(name, *args, &block)
+  end
+
+  def self.method_missing(*args, &block)
+    chain   = args[0].to_s
+    name    = args[1]
+    factory = Factory.factories[name.to_sym]
+    super(*args, &block) unless factory
+
+    names = factory.scope_names.map(&:to_s)
+    super(*args, &block) if names.empty?
+
+    rs = true
+    assigned = {}
+    while rs
+      rs = names.any? do |n|
+        if chain.start_with?(n)
+          assigned.merge!(factory.scope_attributes_for(n.to_sym))
+          chain.gsub!(/^#{n}_?/, "")
+          !chain.empty?
+        end
+      end
+    end
+
+    raise ScopeNotFoundError, "Can't found scope with name '#{chain}'" unless chain.empty?
+    Factory(name.to_sym, assigned)
   end
 
   # Adds an attribute that builds an association. The associated instance will
@@ -124,6 +169,14 @@ class Factory
     build_attributes_hash(attrs, :attributes_for)
   end
 
+  def scope_attributes_for(scope, attrs = {}) #:nodoc
+    build_attributes_hash(attrs, :attributes_for, @scopes[scope])
+  end
+
+  def scope_names
+    @scopes.keys
+  end
+
   def build (attrs = {}) #:nodoc:
     build_instance(attrs, :build)
   end
@@ -149,6 +202,10 @@ class Factory
     #   this factory generates. (Hash)
     def attributes_for (name, attrs = {})
       factory_by_name(name).attributes_for(attrs)
+    end
+
+    def scope_attributes_for(name, scope, attrs = {}) #:nodoc
+      factory_by_name(name).scope_attributes_for(scope, attrs)
     end
 
     # Generates and returns an instance from this factory. Attributes can be
@@ -205,10 +262,10 @@ class Factory
 
   private
 
-  def build_attributes_hash (values, strategy)
+  def build_attributes_hash (values, strategy, container = nil)
     values = symbolize_keys(values)
     passed_keys = values.keys.collect {|key| Factory.aliases_for(key) }.flatten
-    @attributes.each do |attribute|
+    (container || @attributes).each do |attribute|
       unless passed_keys.include?(attribute.name)
         proxy = AttributeProxy.new(self, attribute.name, strategy, values)
         values[attribute.name] = attribute.value(proxy)
@@ -247,7 +304,7 @@ class Factory
   end
 
   def assert_valid_options(options)
-    invalid_keys = options.keys - [:class] 
+    invalid_keys = options.keys - [:class]
     unless invalid_keys == []
       raise ArgumentError, "Unknown arguments: #{invalid_keys.inspect}"
     end
