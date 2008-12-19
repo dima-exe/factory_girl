@@ -504,6 +504,13 @@ class FactoryTest < Test::Unit::TestCase
       assert_equal 1, factory.status
       assert_equal 1, factory.rotations
     end
+
+    should "assign scope with options" do
+      factory = Factory.approved_radio(@name, :status => 2, :broadcast => :bogus)
+      assert_equal 1, factory.rotations
+      assert_equal 2, factory.status
+      assert_equal :bogus, factory.broadcast
+    end
   end
 
   def self.context_in_directory_with_files(*files)

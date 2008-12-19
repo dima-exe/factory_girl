@@ -111,9 +111,10 @@ class Factory
     add_attribute(name, *args, &block)
   end
 
-  def self.method_missing(*args, &block)
-    chain   = args[0].to_s
-    name    = args[1]
+  def self.method_missing(chain, *args, &block)
+    name    = args[0]
+    chain   = chain.to_s
+    options = args.extract_options!
     factory = Factory.factories[name.to_sym]
     super(*args, &block) unless factory
 
@@ -133,7 +134,7 @@ class Factory
     end
 
     raise ScopeNotFoundError, "Can't found scope with name '#{chain}'" unless chain.empty?
-    Factory(name.to_sym, assigned)
+    Factory(name.to_sym, assigned.merge(options))
   end
 
   # Adds an attribute that builds an association. The associated instance will
